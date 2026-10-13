@@ -608,6 +608,36 @@ private final class TinyDecisionModel: Module, DecisionModel {
     }
 }
 
+/// A tiny decision model with a vision module that the loader can leave out.
+private final class TinyVisionDecisionModel: Module, DecisionModel, ModelComponentsProviding {
+    @ModuleInfo var linear: Linear
+    @ModuleInfo var vision: Linear?
+
+    let decisionCapabilities = TinyDecisionModel.capabilities
+
+    override init() {
+        self._linear.wrappedValue = Linear(2, 2)
+        self._vision.wrappedValue = Linear(2, 2)
+        super.init()
+    }
+
+    var modelComponents: [ModelComponent: [CheckpointComponent]] {
+        [
+            .vision: [
+                CheckpointComponent(name: "vision", namespaces: ["vision"], destination: "vision")
+            ]
+        ]
+    }
+
+    func decisionProbabilities(
+        _ request: consuming DecisionRequest, tokenizer: any Tokenizer,
+        options: DecisionExecutionOptions
+    ) async throws -> DecisionProbabilities {
+        DecisionProbabilities(
+            probabilities: request.questions.map { _ in [0.5, 0.5] }, inputTokens: 0)
+    }
+}
+
 private struct ScalarTokenizer: Tokenizer {
     func encode(text: String, addSpecialTokens: Bool) -> [Int] {
         text.unicodeScalars.map { Int($0.value) }
@@ -790,7 +820,7 @@ struct DecisionModelFactoryTests {
             (#"{"model_type": "lfm2", "auto_map": {"AutoModel": "modeling_d1.D1Model"}}"#, nil),
             (
                 #"{"model_type": "d1_omni", "auto_map": {"AutoConfig": "configuration_d1.D1OmniConfig", "AutoModel": "modeling_d1.D1OmniModel"}}"#,
-                nil
+                .d1Omni
             ),
             (
                 #"{"model_type": "lfm2_vl", "auto_map": {"AutoModel": "modeling_d1.D1OmniModel"}}"#,
@@ -815,7 +845,6 @@ struct DecisionModelFactoryTests {
                 "Unsupported decision model type 'lfm2_vl' with AutoModel 'modeling.Lfm2VlModel'."
             ),
             (#"{"model_type": "qwen3"}"#, "Unsupported decision model type 'qwen3'."),
-            (#"{"model_type": "d1_omni"}"#, "Unsupported decision model type 'd1_omni'."),
         ]
         for (config, message) in cases {
             let directory = try temporaryModelDirectory(config: config)
@@ -863,6 +892,83 @@ struct DecisionModelFactoryTests {
                 from: directory, using: RecordingTokenizerLoader())
             Issue.record("Expected a configuration file error")
         } catch ModelFactoryError.configurationFileError(let file, _, _) {
+            #expect(file == "config.json")
+        }
+    }
+
+    @Test func directLoaderBuildsTheModelAndLoadsWeightsAndTokenizer() async throws {
+        let directory = try temporaryModelDirectory(
+            config: #"{"model_type": "tiny_decision"}"#,
+            weights: [
+                "linear.weight": MLXArray([0.5, 0.5, 0.5, 0.5] as [Float], [2, 2]),
+                "linear.bias": MLXArray([1, 2] as [Float]),
+            ])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let log = ModelLog()
+        let loader = RecordingTokenizerLoader()
+        var configurations: [String] = []
+
+        let container = try await DecisionModelFactory.shared.loadDecisionModel(
+            resolved: ResolvedModelConfiguration(directory: directory), modelID: "test/tiny",
+            using: loader
+        ) { data in
+            configurations.append(String(decoding: data, as: UTF8.self))
+            return TinyDecisionModel(log: log)
+        }
+
+        #expect(configurations == [#"{"model_type": "tiny_decision"}"#])
+        #expect(await loader.directories == [directory])
+        #expect(container.modelID == "test/tiny")
+        #expect(container.capabilities == TinyDecisionModel.capabilities)
+
+        let response = try await container.predict(state: "abc", questions: ["refund": refund])
+        #expect(response.inputTokens == 3)
+        let calls = await log.calls
+        #expect(calls.first?.training == [false, false, false])
+        #expect(calls.first?.weightSum == 5)
+    }
+
+    @Test func directLoaderLeavesOutExcludedComponents() async throws {
+        let directory = try temporaryModelDirectory(
+            config: #"{"model_type": "tiny_decision"}"#,
+            weights: [
+                "linear.weight": MLXArray.zeros([2, 2]), "linear.bias": MLXArray.zeros([2]),
+                "vision.weight": MLXArray.ones([2, 2]), "vision.bias": MLXArray.ones([2]),
+            ])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for excluded in [[], [ModelComponent.vision]] as [Set<ModelComponent>] {
+            var resolved = ResolvedModelConfiguration(directory: directory)
+            resolved.excludedComponents = excluded
+            var created: TinyVisionDecisionModel?
+            _ = try await DecisionModelFactory.shared.loadDecisionModel(
+                resolved: resolved, modelID: "test/tiny", using: RecordingTokenizerLoader()
+            ) { _ in
+                let model = TinyVisionDecisionModel()
+                created = model
+                return model
+            }
+            let model = try #require(created)
+            #expect((model.vision == nil) == excluded.contains(.vision), "\(excluded)")
+            if let vision = model.vision {
+                #expect(vision.weight.sum().item(Float.self) == 4)
+            }
+        }
+    }
+
+    @Test func directLoaderReportsConfigurationDecodingErrors() async throws {
+        struct Strict: Decodable { var width: Int }
+        let directory = try temporaryModelDirectory(config: #"{"model_type": "tiny_decision"}"#)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        do {
+            _ = try await DecisionModelFactory.shared.loadDecisionModel(
+                resolved: ResolvedModelConfiguration(directory: directory), modelID: "test/tiny",
+                using: RecordingTokenizerLoader()
+            ) { data in
+                _ = try JSONDecoder().decode(Strict.self, from: data)
+                return TinyDecisionModel(log: ModelLog())
+            }
+            Issue.record("Expected a configuration decoding error")
+        } catch ModelFactoryError.configurationDecodingError(let file, _, _) {
             #expect(file == "config.json")
         }
     }
