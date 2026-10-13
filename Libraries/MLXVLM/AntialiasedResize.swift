@@ -85,12 +85,20 @@ enum ResampleFilter: Int, Sendable, CaseIterable {
 /// One axis of a separable uint8 resize in fixed point: output sample `i` is
 /// `(2^(shift - 1) + Σ input[start[i] + j] * weights[i * kernelSize + j]) >> shift` over
 /// `j < count[i]`, clamped to 0...255.
-struct ResampleTaps: Equatable, Sendable {
+package struct ResampleTaps: Equatable, Sendable {
     var kernelSize: Int
     var shift: Int
     var start: [Int]
     var count: [Int]
     var weights: [Int32]
+
+    package init(kernelSize: Int, shift: Int, start: [Int], count: [Int], weights: [Int32]) {
+        self.kernelSize = kernelSize
+        self.shift = shift
+        self.start = start
+        self.count = count
+        self.weights = weights
+    }
 
     /// ATen `_compute_index_ranges_int16_weights` with antialiasing: weights in double, then
     /// int16 at the largest precision below 22 bits that keeps the largest weight in range.
@@ -141,9 +149,14 @@ struct ResampleTaps: Equatable, Sendable {
 }
 
 /// One pass of a separable uint8 resize: the axis it resamples and its taps.
-struct ResamplePass: Equatable, Sendable {
+package struct ResamplePass: Equatable, Sendable {
     var horizontal: Bool
     var taps: ResampleTaps
+
+    package init(horizontal: Bool, taps: ResampleTaps) {
+        self.horizontal = horizontal
+        self.taps = taps
+    }
 }
 
 extension RGB8Image {
@@ -184,7 +197,7 @@ extension RGB8Image {
 
     /// `oriented(orientation)` after `passes` in order, each rounded to uint8. It runs on the
     /// GPU or the CPU as `resized` does, with the same bytes.
-    func resampled(_ passes: [ResamplePass], orientation: Int = 1) -> RGB8Image {
+    package func resampled(_ passes: [ResamplePass], orientation: Int = 1) -> RGB8Image {
         #if canImport(Metal)
         if prefersGPU(passes, orientation: orientation) {
             return gpuResampled(passes, orientation: orientation)

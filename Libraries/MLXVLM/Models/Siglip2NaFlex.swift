@@ -266,13 +266,19 @@ enum Siglip2NaFlex {
 // MARK: - Patches
 
 /// The SigLIP2 NaFlex vision-tower input for a set of views.
-struct Siglip2Patches {
+package struct Siglip2Patches {
     /// `[views, patches, 3 * patch * patch]` float32 in (py, px, c) order, zero padded.
-    var pixels: MLXArray
+    package var pixels: MLXArray
     /// `[views, patches]` int32, 1 for real patches; see `Siglip2NaFlex.patchMask`.
-    var mask: MLXArray
+    package var mask: MLXArray
     /// `(rows, columns)` of patches per view.
-    var spatialShapes: [(Int, Int)]
+    package var spatialShapes: [(Int, Int)]
+
+    package init(pixels: MLXArray, mask: MLXArray, spatialShapes: [(Int, Int)]) {
+        self.pixels = pixels
+        self.mask = mask
+        self.spatialShapes = spatialShapes
+    }
 }
 
 /// Patches for SigLIP2 NaFlex, padded to `maxPatches` per crop. Each crop is cut to whole
