@@ -86,6 +86,31 @@ Currently supported model types are:
 
 See [llm-tool](../../Tools/llm-tool)
 
+# LFM2-VL
+
+`LFM2VLProcessor` prepares images as transformers' `Lfm2VlProcessor` does. Callers who used
+it before will notice these behaviours:
+
+- `UserInput.Processing.resize` still fits each image in that size first, keeping its aspect
+  ratio, and the processor then lays out the fitted image. `ChatSession` passes 512 × 512 by
+  default. Pass `processing: .init()` to read large images at full size, tiled as the
+  checkpoint's settings ask.
+- Images decode to 8-bit RGB, as transformers' `load_image` does. sRGB and untagged PNG, GIF,
+  WebP, BMP and TIFF files give the same pixels, except that transparent GIF pixels decode as
+  black, as they did before. Images with another RGB color profile, such as Display P3 or
+  Adobe RGB, are still converted to sRGB, while `load_image` reads their stored values. A
+  `CIImage` is read in its color space. JPEG, MPO and Ultra HDR files decode through Core
+  Image, within about 4 levels of `load_image`, and HEIC files through ImageIO. CMYK images
+  can differ by more than 100 levels.
+- The processor settings are read from `processor_config.json` and
+  `preprocessor_config.json` as transformers reads them. A value of the wrong type keeps its
+  default. A `resample` other than 2 (bilinear) or 3 (bicubic) fails the load.
+- Each image is wrapped in the image start, tile and end marker tokens. Each `<image>` in a
+  prompt stands for an image, and the processor throws when the counts differ, as
+  transformers does. When there are more `<image>` than images, those in system, assistant and
+  tool messages and in tool specs are read as text, so a reply that contains `<image>` does not
+  break the next turns.
+
 # Adding a Model
 
 If the model follows the typical VLM pattern:
