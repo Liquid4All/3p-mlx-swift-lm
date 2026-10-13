@@ -14,6 +14,9 @@ enum D1Fixtures {
     /// The `LiquidAI/d1-3B` snapshot, `MLX_D1_3B_MODEL`.
     static let d1Model = environment["MLX_D1_3B_MODEL"].map { URL(fileURLWithPath: $0) }
 
+    /// The `LiquidAI/d1-omni-600M` snapshot, `MLX_D1_OMNI_MODEL`.
+    static let omniModel = environment["MLX_D1_OMNI_MODEL"].map { URL(fileURLWithPath: $0) }
+
     /// The directory `tools/d1_fixtures.py` writes, `MLX_D1_FIXTURES`.
     static let directory = environment["MLX_D1_FIXTURES"].map { URL(fileURLWithPath: $0) }
 
