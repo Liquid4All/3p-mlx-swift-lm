@@ -233,6 +233,15 @@ struct DecisionValidationTests {
                     capabilities: both)
             }
         }
+        for text in ["https://example.com/clip.wav", "data:audio/wav;base64,UklGRg=="] {
+            let clip = UserInput.Audio.url(try #require(URL(string: text)))
+            #expect(
+                throws: DecisionError.invalidAudio(
+                    "\(text): only file URLs are read; download remote files first")
+            ) {
+                try validate(DecisionRequest(questions: questions, audio: clip), capabilities: both)
+            }
+        }
 
         // The checks that follow mlx_vlm.decision.predict come first.
         let remote = UserInput.Image.url(try #require(URL(string: "https://example.com/cat.png")))
@@ -310,6 +319,9 @@ struct DecisionValidationTests {
         #expect(
             DecisionError.emptyLabel(name: "q").errorDescription?
                 .hasPrefix("Decision labels must be nonempty strings") == true)
+        #expect(
+            DecisionError.imagesWithAudio.errorDescription
+                == "A request carries images or audio, not both")
         #expect(
             DecisionError.invalidExecutionOption(name: "tokenBudget", value: 0).errorDescription
                 == "tokenBudget must be positive, got 0")
