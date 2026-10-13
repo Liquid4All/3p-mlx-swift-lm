@@ -37,6 +37,19 @@ ffmpeg \
 -y audio_only.mov
 ```
 
+`chirp.ogg`, an Ogg Vorbis clip for `D1OmniAudioTests`, was created via
+
+```
+ffmpeg \
+-f lavfi \
+-i "aevalsrc=0.5*exp(-pow((n-4000)/1200\,2))*sin(2*PI*(300*t+2700*t*t)):s=16000:d=0.5" \
+-c:a libvorbis \
+-q:a 4 \
+-page_duration 50000 \
+-map_metadata -1 \
+chirp.ogg
+```
+
 ## LFM2-VL test vectors
 
 The expected values in `ImagePixelsTests.swift`, `LFM2VLImageProcessingTests.swift`,
@@ -52,7 +65,7 @@ The script prints the values grouped by test. It needs no model weights.
 
 ## d1 parity tests on real weights
 
-Three suites compare the LiquidAI d1 decision models with their Python references on the
+Four suites compare the LiquidAI d1 decision models with their Python references on the
 released checkpoints: d1-3B in float32, and d1-omni-600M in float32, float16 and bfloat16.
 d1-3B's reference is the checkpoint's own code (`modeling_d1.py`, loaded with
 `trust_remote_code`), which prepares images with Pillow and transformers' `Lfm2VlProcessor`.
@@ -62,7 +75,7 @@ d1-omni's reference is mlx-vlm. The suites skip unless their environment variabl
 | --- | --- | --- |
 | `MLX_D1_FIXTURES` | The directory `tools/d1_fixtures.py` writes | all of them |
 | `MLX_D1_3B_MODEL` | A `LiquidAI/d1-3B` snapshot | `D1ParityTests` |
-| `MLX_D1_OMNI_MODEL` | A `LiquidAI/d1-omni-600M` snapshot | `D1OmniParityTests`, `Siglip2NaFlexParityTests` |
+| `MLX_D1_OMNI_MODEL` | A `LiquidAI/d1-omni-600M` snapshot | `D1OmniParityTests`, `D1OmniAudioParityTests`, `Siglip2NaFlexParityTests` |
 
 The suites check answers, token counts, image layouts, media prefixes and vision tower
 outputs. The tests feed Python's token ids through a lookup table, so the swift-transformers
@@ -82,10 +95,10 @@ pip install "transformers>=5.19" torch torchvision pillow numpy huggingface_hub 
 python tools/d1_fixtures.py write --out ~/d1-fixtures
 ```
 
-The script downloads `cats.jpg` at a pinned revision and makes the PNG inputs from it. It
-loads d1-3B and d1-omni-600M at the revisions the tests expect, from the Hugging Face cache or
-the Hub, and writes about 150 MB. `--only d1-3b` or `--only omni` writes the files of one
-model, so each can run in its own environment.
+The script downloads `cats.jpg` and `jfk.wav` at pinned revisions and makes the PNG inputs
+from `cats.jpg`. It loads d1-3B and d1-omni-600M at the revisions the tests expect, from the
+Hugging Face cache or the Hub, and writes about 150 MB. `--only d1-3b` or `--only omni`
+writes the files of one model, so each can run in its own environment.
 `python tools/d1_fixtures.py vectors` prints the Pillow resize values of `D1Tests.swift`.
 
 ### Run the tests
@@ -105,7 +118,11 @@ xcodebuild test -scheme mlx-swift-lm-Package -destination 'platform=macOS' \
     -skipPackagePluginValidation \
     -only-testing:MLXLMTests/D1ParityTests \
     -only-testing:MLXLMTests/D1OmniParityTests \
+    -only-testing:MLXLMTests/D1OmniAudioParityTests \
     -only-testing:MLXLMTests/Siglip2NaFlexParityTests
 ```
 
 They take under a minute on an M3 Ultra, not counting the build.
+
+`python tools/d1_fixtures.py tiny-audio` prints the expected values of the tiny audio
+model test in `D1OmniAudioTests`. It needs no checkpoint.

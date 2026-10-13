@@ -147,6 +147,10 @@ func validateDecisionRequest(
             )
         }
     }
+    if case .url(let url)? = request.audio?.source, !url.isFileURL {
+        throw DecisionError.invalidAudio(
+            "\(url.absoluteString): only file URLs are read; download remote files first")
+    }
 }
 
 /// Build typed answers from per-question option probabilities.
